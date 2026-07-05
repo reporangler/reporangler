@@ -1,83 +1,117 @@
-# Local development stack with air hot-reload. Source is bind-mounted, so code
-# edits rebuild + restart the affected service.
+# Local dev stack with air hot-reload, wired into the ddt docker-proxy.
 #
-#   cd deploy && docker compose up
+#   task dev            # (or: docker compose -f deploy/docker-compose.yml up --build)
 #
-# Inter-service URLs use container names on the shared network. Ports are also
-# published to the host for direct curl/testing.
+# REQUIRES the ddt docker-proxy running first — it owns the external
+# `repo_rangler_proxy` network. Each service registers with the proxy via
+# `docker-proxy.<name>.{host,port}` labels and becomes reachable at
+# <svc>.reporangler.localhost. Inter-service traffic uses container names on the
+# internal network; Postgres stays internal (not proxied).
 name: reporangler
+
+networks:
+  internal:
+  repo_rangler_proxy:
+    name: repo_rangler_proxy
+    external: true
+
+# Common dev-container config (build + bind-mount + both networks).
+x-dev: &dev
+  build: { context: .., dockerfile: deploy/dev.Dockerfile }
+  volumes: ["..:/app"]
+  networks: [internal, repo_rangler_proxy]
+
+# Shared facade env: how facades reach the backends (internal) + how they build
+# public download URLs (via the proxy domain).
+x-facade-env: &facade-env
+  APP_PROTOCOL: http
+  APP_DOMAIN: reporangler.localhost
+  AUTH_BASE_URL: http://auth:8080
+  METADATA_BASE_URL: http://metadata:8080
+  STORAGE_BASE_URL: http://storage:8080
+  STORAGE_PUBLIC_URL: http://storage.reporangler.localhost
 
 services:
   postgres:
     image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: reporangler
-      POSTGRES_PASSWORD: reporangler
-      POSTGRES_DB: reporangler
+    environment: { POSTGRES_USER: reporangler, POSTGRES_PASSWORD: reporangler, POSTGRES_DB: reporangler }
+    networks: [internal]
     ports: ["5432:5432"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U reporangler"]
-      interval: 2s
-      timeout: 3s
-      retries: 20
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U reporangler"], interval: 2s, timeout: 3s, retries: 20 }
     volumes: ["pgdata:/var/lib/postgresql/data"]
 
   auth:
-    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    <<: *dev
     environment:
       SERVICE: auth
       PORT: "8080"
+      APP_PROTOCOL: http
+      APP_DOMAIN: reporangler.localhost
       DATABASE_URL: postgres://reporangler:reporangler@postgres:5432/reporangler?sslmode=disable
+      AUTH_BASE_URL: http://auth:8080
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: admin
       ADMIN_EMAIL: admin@reporangler.local
-      AUTH_BASE_URL: http://auth:8080
-    volumes: ["..:/app"]
-    ports: ["8001:8080"]
-    depends_on:
-      postgres: { condition: service_healthy }
+    labels:
+      docker-proxy.auth.host: auth.reporangler.localhost
+      docker-proxy.auth.port: "8080"
+    depends_on: { postgres: { condition: service_healthy } }
 
   metadata:
-    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    <<: *dev
     environment:
       SERVICE: metadata
       PORT: "8080"
+      APP_PROTOCOL: http
+      APP_DOMAIN: reporangler.localhost
       DATABASE_URL: postgres://reporangler:reporangler@postgres:5432/reporangler?sslmode=disable
       AUTH_BASE_URL: http://auth:8080
-    volumes: ["..:/app"]
-    ports: ["8002:8080"]
-    depends_on:
-      postgres: { condition: service_healthy }
+    labels:
+      docker-proxy.metadata.host: metadata.reporangler.localhost
+      docker-proxy.metadata.port: "8080"
+    depends_on: { postgres: { condition: service_healthy } }
 
   storage:
-    build: { context: .., dockerfile: deploy/dev.Dockerfile }
-    environment: { SERVICE: storage, PORT: "8080", AUTH_BASE_URL: http://auth:8080 }
+    <<: *dev
     volumes: ["..:/app", "blobs:/data/packages"]
-    ports: ["8003:8080"]
+    environment:
+      SERVICE: storage
+      PORT: "8080"
+      APP_PROTOCOL: http
+      APP_DOMAIN: reporangler.localhost
+      AUTH_BASE_URL: http://auth:8080
+      STORAGE_PATH: /data/packages
+    labels:
+      docker-proxy.storage.host: storage.reporangler.localhost
+      docker-proxy.storage.port: "8080"
 
   php:
-    build: { context: .., dockerfile: deploy/dev.Dockerfile }
-    environment: { SERVICE: php, PORT: "8080", AUTH_BASE_URL: http://auth:8080, METADATA_BASE_URL: http://metadata:8080, STORAGE_BASE_URL: http://storage:8080 }
-    volumes: ["..:/app"]
-    ports: ["8004:8080"]
+    <<: *dev
+    environment: { <<: *facade-env, SERVICE: php, PORT: "8080" }
+    labels:
+      docker-proxy.php.host: php.reporangler.localhost
+      docker-proxy.php.port: "8080"
 
   npm:
-    build: { context: .., dockerfile: deploy/dev.Dockerfile }
-    environment: { SERVICE: npm, PORT: "8080", AUTH_BASE_URL: http://auth:8080, METADATA_BASE_URL: http://metadata:8080, STORAGE_BASE_URL: http://storage:8080 }
-    volumes: ["..:/app"]
-    ports: ["8005:8080"]
+    <<: *dev
+    environment: { <<: *facade-env, SERVICE: npm, PORT: "8080" }
+    labels:
+      docker-proxy.npm.host: npm.reporangler.localhost
+      docker-proxy.npm.port: "8080"
 
   pypi:
-    build: { context: .., dockerfile: deploy/dev.Dockerfile }
-    environment: { SERVICE: pypi, PORT: "8080", AUTH_BASE_URL: http://auth:8080, METADATA_BASE_URL: http://metadata:8080, STORAGE_BASE_URL: http://storage:8080 }
-    volumes: ["..:/app"]
-    ports: ["8006:8080"]
+    <<: *dev
+    environment: { <<: *facade-env, SERVICE: pypi, PORT: "8080" }
+    labels:
+      docker-proxy.pypi.host: pypi.reporangler.localhost
+      docker-proxy.pypi.port: "8080"
 
   goproxy:
-    build: { context: .., dockerfile: deploy/dev.Dockerfile }
-    environment: { SERVICE: goproxy, PORT: "8080", AUTH_BASE_URL: http://auth:8080, METADATA_BASE_URL: http://metadata:8080, STORAGE_BASE_URL: http://storage:8080 }
-    volumes: ["..:/app"]
-    ports: ["8007:8080"]
+    <<: *dev
+    environment: { <<: *facade-env, SERVICE: goproxy, PORT: "8080" }
+    labels:
+      docker-proxy.go.host: go.reporangler.localhost
+      docker-proxy.go.port: "8080"
 
 volumes:
   pgdata:
