@@ -6,11 +6,20 @@ import (
 	"github.com/reporangler/reporangler/internal/httpx"
 )
 
-// Handler adapts Service to HTTP.
-type Handler struct{ svc *Service }
+// Handler adapts Service to HTTP. metadataBaseURL + httpClient let the
+// package-group permission handlers resolve group/repository names via
+// metadata-service, forwarding the caller's bearer token.
+type Handler struct {
+	svc             *Service
+	metadataBaseURL string
+	httpClient      *http.Client
+}
 
-// NewHandler wraps a Service.
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+// NewHandler wraps a Service. metadataBaseURL is metadata-service's base URL,
+// used to resolve package-group / repository name↔id for permission grants.
+func NewHandler(svc *Service, metadataBaseURL string) *Handler {
+	return &Handler{svc: svc, metadataBaseURL: metadataBaseURL, httpClient: http.DefaultClient}
+}
 
 // Login handles GET /login/api. Credentials arrive as custom headers, matching
 // the legacy contract that lib-reporangler's AuthClient::login speaks.

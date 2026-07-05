@@ -6,6 +6,6 @@
 package tools
 
 import (
-	_ "github.com/spf13/cobra"    // cmd/cli
-	_ "golang.org/x/mod/semver"   // cmd/goproxy (Go semver ordering)
+	_ "github.com/spf13/cobra"  // cmd/cli
+	_ "golang.org/x/mod/semver" // cmd/goproxy (Go semver ordering)
 )

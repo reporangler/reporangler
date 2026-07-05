@@ -1,13 +1,15 @@
 // Command cli is the RepoRangler operator CLI (login, user/group/repo/token
-// management, publish). Target: cobra + viper. Scaffold: prints usage.
+// management, publish), built on cobra. The command tree lives in the app
+// subpackage so it can be unit-tested; main just runs it and maps errors to a
+// non-zero exit code.
 package main
 
 import (
-	"fmt"
 	"os"
+
+	"github.com/reporangler/reporangler/cmd/cli/app"
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "reporangler (scaffold) — CLI commands coming soon")
-	fmt.Fprintln(os.Stderr, "planned: login, list/create/delete-user, *-package-group, *-repository, publish")
+	os.Exit(app.Execute())
 }
