@@ -1,0 +1,84 @@
+# Local development stack with air hot-reload. Source is bind-mounted, so code
+# edits rebuild + restart the affected service.
+#
+#   cd deploy && docker compose up
+#
+# Inter-service URLs use container names on the shared network. Ports are also
+# published to the host for direct curl/testing.
+name: reporangler
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: reporangler
+      POSTGRES_PASSWORD: reporangler
+      POSTGRES_DB: reporangler
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reporangler"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+
+  auth:
+    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    environment:
+      SERVICE: auth
+      PORT: "8080"
+      DATABASE_URL: postgres://reporangler:reporangler@postgres:5432/reporangler?sslmode=disable
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin
+      ADMIN_EMAIL: admin@reporangler.local
+      AUTH_BASE_URL: http://auth:8080
+    volumes: ["..:/app"]
+    ports: ["8001:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  metadata:
+    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    environment:
+      SERVICE: metadata
+      PORT: "8080"
+      DATABASE_URL: postgres://reporangler:reporangler@postgres:5432/reporangler?sslmode=disable
+      AUTH_BASE_URL: http://auth:8080
+    volumes: ["..:/app"]
+    ports: ["8002:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  storage:
+    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    environment: { SERVICE: storage, PORT: "8080", AUTH_BASE_URL: http://auth:8080 }
+    volumes: ["..:/app", "blobs:/data/packages"]
+    ports: ["8003:8080"]
+
+  php:
+    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    environment: { SERVICE: php, PORT: "8080", AUTH_BASE_URL: http://auth:8080, METADATA_BASE_URL: http://metadata:8080, STORAGE_BASE_URL: http://storage:8080 }
+    volumes: ["..:/app"]
+    ports: ["8004:8080"]
+
+  npm:
+    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    environment: { SERVICE: npm, PORT: "8080", AUTH_BASE_URL: http://auth:8080, METADATA_BASE_URL: http://metadata:8080, STORAGE_BASE_URL: http://storage:8080 }
+    volumes: ["..:/app"]
+    ports: ["8005:8080"]
+
+  pypi:
+    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    environment: { SERVICE: pypi, PORT: "8080", AUTH_BASE_URL: http://auth:8080, METADATA_BASE_URL: http://metadata:8080, STORAGE_BASE_URL: http://storage:8080 }
+    volumes: ["..:/app"]
+    ports: ["8006:8080"]
+
+  goproxy:
+    build: { context: .., dockerfile: deploy/dev.Dockerfile }
+    environment: { SERVICE: goproxy, PORT: "8080", AUTH_BASE_URL: http://auth:8080, METADATA_BASE_URL: http://metadata:8080, STORAGE_BASE_URL: http://storage:8080 }
+    volumes: ["..:/app"]
+    ports: ["8007:8080"]
+
+volumes:
+  pgdata:
+  blobs:

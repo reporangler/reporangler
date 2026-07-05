@@ -1,0 +1,15 @@
+# air hot-reload config. $SERVICE selects the cmd/ package to build+run, so one
+# config serves every service (docker-compose sets SERVICE per container).
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/service ./cmd/$SERVICE"
+  bin = "./tmp/service"
+  include_ext = ["go", "sql"]
+  exclude_dir = ["tmp", "bin", "deploy", "docs", ".git"]
+  delay = 300
+  stop_on_error = true
+
+[log]
+  time = true
