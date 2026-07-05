@@ -46,8 +46,12 @@ docs/legacy/        functional specs of the original PHP services (the port's so
 
 ## Run it (dev, hot-reload via air)
 
+Everything is orchestrated with [go-task](https://taskfile.dev) — run `task` to
+list all targets.
+
 ```sh
-cd deploy && docker compose up
+task dev          # launch the whole platform (postgres + all services, hot-reload)
+task dev:down     # stop it
 ```
 
 Services publish to host ports 8001–8007; Postgres on 5432. A seed admin user
@@ -64,10 +68,13 @@ TOKEN=$(curl -s http://localhost:8001/login/api \
 curl -s http://localhost:8001/login/token -H "Authorization: Bearer $TOKEN" | jq
 ```
 
-## Build / test (no local Go needed)
+## Build / test
 
 ```sh
-docker run --rm -v "$PWD":/app -w /app golang:1.25-alpine sh -c 'go build ./... && go test ./...'
+task ci           # vet + test + build (needs Go 1.25 on PATH)
+task docker:ci    # same, inside the golang container (no local Go needed)
+task build        # binaries into ./bin
+task images       # production Docker image per service
 ```
 
 ## Status

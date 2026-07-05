@@ -1,0 +1,87 @@
+# go-task orchestration for the RepoRangler platform.
+# Install task: https://taskfile.dev  (brew install go-task/tap/go-task)
+# Run `task` with no args to list everything.
+version: '3'
+
+vars:
+  SERVICES: auth metadata storage php npm pypi goproxy cli
+  COMPOSE: docker compose -f deploy/docker-compose.yml
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds: [task --list]
+    silent: true
+
+  # --- Go ---------------------------------------------------------------
+  tidy:
+    desc: go mod tidy
+    cmds: [go mod tidy]
+
+  fmt:
+    desc: gofmt all packages
+    cmds: [gofmt -w .]
+
+  vet:
+    desc: go vet
+    cmds: [go vet ./...]
+
+  test:
+    desc: Run all tests
+    cmds: [go test ./...]
+
+  build:
+    desc: Build every service binary into ./bin
+    cmds:
+      - for:
+          var: SERVICES
+          split: " "
+          as: SVC
+        cmd: go build -o bin/{{.SVC}} ./cmd/{{.SVC}}
+
+  'run:*':
+    desc: Run one service locally (e.g. `task run:auth`). Needs env (DATABASE_URL, ...).
+    vars:
+      SVC: '{{index .MATCH 0}}'
+    cmds:
+      - go run ./cmd/{{.SVC}}
+
+  ci:
+    desc: Full local check — vet, test, build
+    cmds:
+      - task: vet
+      - task: test
+      - task: build
+
+  # --- Dev stack (docker compose + air hot-reload) ----------------------
+  dev:
+    desc: Launch the entire platform in dev mode (postgres + all services, hot-reload)
+    cmds: ['{{.COMPOSE}} up --build']
+
+  dev:down:
+    desc: Stop and remove the dev stack
+    cmds: ['{{.COMPOSE}} down']
+
+  dev:logs:
+    desc: Tail dev-stack logs
+    cmds: ['{{.COMPOSE}} logs -f']
+
+  dev:psql:
+    desc: Open a psql shell on the dev database
+    cmds: ['{{.COMPOSE}} exec postgres psql -U reporangler']
+
+  # --- Production images -------------------------------------------------
+  images:
+    desc: Build production Docker images for every service
+    cmds:
+      - for:
+          var: SERVICES
+          split: " "
+          as: SVC
+        cmd: docker build -f deploy/Dockerfile --build-arg SERVICE={{.SVC}} -t reporangler/{{.SVC}}:dev .
+
+  # --- No-local-Go escape hatch -----------------------------------------
+  docker:ci:
+    desc: build + test inside the golang container (no local Go toolchain needed)
+    cmds:
+      - docker run --rm -v "$PWD":/app -w /app golang:1.25-alpine sh -c 'go build ./... && go test ./...'
