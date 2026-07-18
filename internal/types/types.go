@@ -106,3 +106,21 @@ type Repository struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 }
+
+// Package is a single package version stored in metadata-service. definition
+// is the ecosystem-specific manifest (composer.json, npm version doc, etc.).
+type Package struct {
+	ID           int64          `json:"id"`
+	Name         string         `json:"name"`
+	Version      string         `json:"version"`
+	PackageGroup string         `json:"package_group"`
+	Definition   map[string]any `json:"definition"`
+	StorageKey   string         `json:"storage_key,omitempty"`
+	PackageType  string         `json:"package_type,omitempty"`
+}
+
+// ListResponse is the {count,data} envelope metadata-service returns for lists.
+type ListResponse[T any] struct {
+	Count int `json:"count"`
+	Data  []T `json:"data"`
+}
